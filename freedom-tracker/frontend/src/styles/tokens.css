@@ -1,0 +1,94 @@
+/* ============================================
+   DESIGN TOKENS
+   Global Freedom Tracker — Democracy & Press Freedom
+   ============================================ */
+
+:root {
+  /* --- Color: Light mode (default) --- */
+  --color-bg: #F7F9FC;
+  --color-surface: #FFFFFF;
+  --color-surface-raised: #FFFFFF;
+  --color-border: #E2E8F0;
+  --color-text-primary: #14181F;
+  --color-text-secondary: #5B6573;
+  --color-text-tertiary: #94A0B2;
+
+  --color-accent: #2D7DD2;
+  --color-accent-dim: #E8F1FC;
+  --color-navy: #1E3A5F;
+
+  --color-decline: #E11D48;
+  --color-decline-dim: #FDECEF;
+  --color-improve: #16A34A;
+  --color-improve-dim: #EBF9F0;
+  --color-neutral: #D97706;
+  --color-neutral-dim: #FEF3E2;
+
+  /* --- Typography --- */
+  --font-display: 'Newsreader', Georgia, serif;
+  --font-body: 'Inter', -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+
+  /* --- Spacing scale --- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* --- Radius --- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  /* --- Shadow --- */
+  --shadow-sm: 0 1px 2px rgba(20, 24, 31, 0.04), 0 1px 3px rgba(20, 24, 31, 0.06);
+  --shadow-md: 0 2px 8px rgba(20, 24, 31, 0.06), 0 4px 16px rgba(20, 24, 31, 0.04);
+
+  /* --- Transition --- */
+  --transition-base: 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+[data-theme='dark'] {
+  --color-bg: #0F1115;
+  --color-surface: #181B22;
+  --color-surface-raised: #1F232C;
+  --color-border: #2B3038;
+  --color-text-primary: #F1F3F7;
+  --color-text-secondary: #9AA3B2;
+  --color-text-tertiary: #5F6878;
+
+  --color-accent: #5B9FE8;
+  --color-accent-dim: #1A2C42;
+  --color-navy: #C7D8EE;
+
+  --color-decline: #F4677F;
+  --color-decline-dim: #2C1A20;
+  --color-improve: #4ADE80;
+  --color-improve-dim: #16271D;
+  --color-neutral: #F2B25A;
+  --color-neutral-dim: #2C2418;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  transition: background var(--transition-base), color var(--transition-base);
+}
+
+#root {
+  min-height: 100vh;
+}

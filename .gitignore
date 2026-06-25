@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+venv/
+
+# Generated merged CSV — rebuilt automatically on first run
+backend/democracy_press_freedom_data.csv
+
+# Node — matches node_modules at any folder depth
+node_modules/
+**/node_modules/
+
+# Build output
+dist/
+
+# OS
+.DS_Store
+Thumbs.db
+*.log
