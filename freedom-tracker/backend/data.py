@@ -100,4 +100,5 @@ def load_and_merge():
     merged_df = merged_df.dropna(subset=['DemocracyScore', 'PressFreedomScore'])
 
     # Sort the data by Country and Year for consistent ordering
-    
+    merged_df = merged_df.sort_values(['Country', 'Year']).reset_index(drop=True)
+    return merged_df
