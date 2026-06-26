@@ -1,4 +1,5 @@
 import { useTheme } from '../ThemeContext'
+import GlobeLogo from '../assets/globe_logo.svg'
 
 function MoonIcon() {
   return (
@@ -42,7 +43,7 @@ export default function TopBar({ onExport }) {
     <header className="topbar">
       <div className="topbar-brand">
         <div className="topbar-globe">
-          <GlobeMark />
+        <img src={GlobeLogo} alt="Global Freedom Tracker logo" style={{ width: 44, height: 44 }} />
         </div>
         <div className="topbar-titles">
           <h1>Global Freedom Tracker</h1>
