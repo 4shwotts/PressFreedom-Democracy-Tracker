@@ -2,7 +2,7 @@
 
 A full-stack data visualisation dashboard tracking democracy and press freedom scores across 161 countries from 2013 to 2023.
 
-**Live demo:** 
+**Live demo:** [press-freedom-democracy-tracker.vercel.app](https://press-freedom-democracy-tracker.vercel.app)
 
 ---
 
