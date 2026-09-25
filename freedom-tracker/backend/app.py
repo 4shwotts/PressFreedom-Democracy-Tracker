@@ -161,6 +161,15 @@ def map_data():
 
     avg_val = round(year_df[metric].mean(), 2)
 
+    # countries that have data in other years but not this one (e.g. 19 countries have
+    # no 2023 democracy score in the source data). The map greys these out, so we send
+    # their available range for the tooltip to explain the gap instead of hiding it
+    missing = df[~df['ISO'].isin(year_df['ISO'])].groupby(['ISO', 'Country'])['Year']
+    no_data = [
+        {'country': country, 'iso': iso, 'yearFrom': int(years.min()), 'yearTo': int(years.max())}
+        for (iso, country), years in missing
+    ]
+
     # calculate most improved and most declined by merging current and previous year
     most_improved = None
     most_declined = None
@@ -180,7 +189,8 @@ def map_data():
         'globalAverage': avg_val,
         'mostImproved': most_improved,
         'mostDeclined': most_declined,
-        'countryCount': len(rows)
+        'countryCount': len(rows),
+        'noDataThisYear': no_data
     })
 
 

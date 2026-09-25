@@ -58,7 +58,7 @@ function buildInsights(mapData, metric) {
   insights.push({
     tone: 'neutral',
     title: 'Reading the Map',
-    body: `Colours run from <strong>dark red</strong> (lowest scores) through orange, amber, and light blue to <strong>dark navy</strong> (highest scores). This applies to both democracy (0–10) and press freedom (0–100). Grey countries have no data available.`
+    body: `Colours run from <strong>dark red</strong> (lowest scores) through orange, amber, and light blue to <strong>dark navy</strong> (highest scores). This applies to both democracy (0–10) and press freedom (0–100). Grey countries have no data for the selected year — hover one to see which years are available.`
   })
 
   return insights
@@ -121,8 +121,12 @@ export default function GlobalMapPage({ meta }) {
   // avoids an array .find() call inside the render loop for every country shape.
   // keyed by ISO code, not name — the atlas and dataset name countries differently
   const valueByIso = {}
+  // countries in the dataset that have no data for the selected year — used to explain
+  // why they're grey rather than leaving the gap looking like a rendering bug
+  const noDataByIso = {}
   if (mapData) {
     mapData.rows.forEach(r => { valueByIso[r.iso] = r })
+    mapData.noDataThisYear.forEach(r => { noDataByIso[r.iso] = r })
   }
 
   // the colour scale maps a score to a colour across 4 stops
@@ -229,9 +233,11 @@ export default function GlobalMapPage({ meta }) {
                   {({ geographies }) =>
                     geographies.map(geo => {
                       // geo.id is the ISO numeric code — translate it to alpha-3 to match the API
-                      const match = valueByIso[ISO_NUMERIC_TO_ALPHA3[geo.id]]
+                      const iso   = ISO_NUMERIC_TO_ALPHA3[geo.id]
+                      const match = valueByIso[iso]
+                      const gap   = noDataByIso[iso]
                       // prefer the dataset's name so the tooltip matches the other tabs
-                      const name  = match ? match.country : geo.properties.name
+                      const name  = match ? match.country : gap ? gap.country : geo.properties.name
                       // grey out countries with no data so they're clearly excluded
                       const fill  = match ? colorScale(match.value) : 'var(--color-border)'
                       return (
@@ -241,8 +247,8 @@ export default function GlobalMapPage({ meta }) {
                           fill={fill}
                           stroke="var(--color-surface)"
                           strokeWidth={0.4}
-                          // only set hovered if we actually have data for this country
-                          onMouseEnter={() => setHovered(match ? { ...match, name } : null)}
+                          // grey countries get a tooltip too, explaining why there's no colour
+                          onMouseEnter={() => setHovered({ ...match, name, hasData: !!match, gap })}
                           onMouseLeave={() => setHovered(null)}
                           style={{
                             default: { outline: 'none', transition: 'opacity 120ms' },
@@ -269,12 +275,30 @@ export default function GlobalMapPage({ meta }) {
                   fontFamily: 'var(--font-mono)',
                   fontSize: 12.5
                 }}>
-                  Democracy: {hovered.democracyScore} / 10<br />
-                  Press Freedom: {hovered.pressFreedomScore} / 100
+                  {hovered.hasData ? (
+                    <>
+                      Democracy: {hovered.democracyScore} / 10<br />
+                      Press Freedom: {hovered.pressFreedomScore} / 100
+                    </>
+                  ) : hovered.gap ? (
+                    <>
+                      No {year} data in the source dataset<br />
+                      Available: {hovered.gap.yearFrom}–{hovered.gap.yearTo}
+                    </>
+                  ) : (
+                    'Not covered by the dataset'
+                  )}
                 </div>
               </div>
             )}
           </div>
+
+          {/* call out countries missing for this year so grey doesn't read as a bug */}
+          {mapData?.noDataThisYear.length > 0 && (
+            <p className="chart-hint">
+              {mapData.noDataThisYear.length} countries have no data for {year} and are shown in grey — hover one to see which years are available.
+            </p>
+          )}
 
           <p className="chart-hint">
             Hover over a country to see details · Scroll or use the controls to zoom, drag to pan
