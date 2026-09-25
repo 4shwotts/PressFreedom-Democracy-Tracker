@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ComposableMap, Geographies, Geography, ZoomableGroup } from 'react-simple-maps'
 import { scaleLinear } from 'd3-scale'
 import { api } from '../api'
+import { ISO_NUMERIC_TO_ALPHA3 } from '../isoCodes'
 import InsightPanel from '../components/InsightPanel'
 import StatCard from '../components/StatCard'
 
@@ -116,11 +117,12 @@ export default function GlobalMapPage({ meta }) {
 
   if (!meta) return null
 
-  // build a country-name → row lookup so each Geography can find its value in O(1)
-  // avoids an array .find() call inside the render loop for every country shape
-  const valueByCountry = {}
+  // build an ISO alpha-3 → row lookup so each Geography can find its value in O(1)
+  // avoids an array .find() call inside the render loop for every country shape.
+  // keyed by ISO code, not name — the atlas and dataset name countries differently
+  const valueByIso = {}
   if (mapData) {
-    mapData.rows.forEach(r => { valueByCountry[r.country] = r })
+    mapData.rows.forEach(r => { valueByIso[r.iso] = r })
   }
 
   // the colour scale maps a score to a colour across 4 stops
@@ -226,9 +228,10 @@ export default function GlobalMapPage({ meta }) {
                 <Geographies geography={GEO_URL}>
                   {({ geographies }) =>
                     geographies.map(geo => {
-                      const name  = geo.properties.name
-                      // look up this country in the valueByCountry map — undefined if no data
-                      const match = valueByCountry[name]
+                      // geo.id is the ISO numeric code — translate it to alpha-3 to match the API
+                      const match = valueByIso[ISO_NUMERIC_TO_ALPHA3[geo.id]]
+                      // prefer the dataset's name so the tooltip matches the other tabs
+                      const name  = match ? match.country : geo.properties.name
                       // grey out countries with no data so they're clearly excluded
                       const fill  = match ? colorScale(match.value) : 'var(--color-border)'
                       return (

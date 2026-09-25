@@ -70,28 +70,35 @@ def load_and_merge():
         raise FileNotFoundError("Could not find democracy data file. Tried: " + ", ".join(democracy_files))
     
     # Clean and standardise the press freedom dataset
-    # Keep only the columns we need and rename them for consistency
-    press_freedom = press_freedom[['Year', 'Country', 'Score']].rename(columns={'Score': 'PressFreedomScore'})
-    
+    # Keep only the columns we need and rename them for consistency.
+    # The country name is dropped here — the press freedom source renames countries
+    # between years (e.g. 'Russian Federation' -> 'Russia', 'Turkey' -> 'Türkiye'),
+    # so we join on the ISO code instead and take names from the democracy dataset
+    press_freedom = press_freedom[['Year', 'ISO', 'Score']].rename(columns={'Score': 'PressFreedomScore'})
+
     # Clean and standardise the democracy dataset
     # Keep only the columns we need and rename them for consistency
     # Note: 'Entity' is renamed to 'Country' for consistency across datasets
-    democracy = democracy[['Entity', 'Year', 'Democracy score']].rename(columns={
-        'Entity': 'Country', 
+    democracy = democracy[['Entity', 'ISO', 'Year', 'Democracy score']].rename(columns={
+        'Entity': 'Country',
         'Democracy score': 'DemocracyScore'
     })
-    
-    # Remove rows with missing scores from both datasets
-    # This ensures we only work with complete data
-    press_freedom = press_freedom.dropna(subset=['PressFreedomScore'])
-    democracy = democracy.dropna(subset=['DemocracyScore'])
-    
-    # Merge the two datasets on Country and Year
+
+    # Remove rows with missing scores or ISO codes from both datasets
+    # This ensures we only work with complete data. Rows without an ISO code are
+    # blank separator rows (press freedom) or continent aggregates (democracy)
+    press_freedom = press_freedom.dropna(subset=['PressFreedomScore', 'ISO', 'Year'])
+    democracy = democracy.dropna(subset=['DemocracyScore', 'ISO'])
+
+    # Year is read as float in the press freedom file because of its blank rows
+    press_freedom['Year'] = press_freedom['Year'].astype(int)
+
+    # Merge the two datasets on ISO code and Year
     # Using 'inner' join to keep only countries that appear in both datasets
     merged_df = pd.merge(
-        democracy, 
-        press_freedom, 
-        on=['Country', 'Year'], 
+        democracy,
+        press_freedom,
+        on=['ISO', 'Year'],
         how='inner'  # Only keep countries with both democracy and press freedom data
     )
     

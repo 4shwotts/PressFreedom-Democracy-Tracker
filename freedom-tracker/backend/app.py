@@ -8,7 +8,24 @@ from flask_cors import CORS
 from flask.json.provider import DefaultJSONProvider
 import pandas as pd
 import numpy as np
+import math
 import os
+
+
+def _replace_non_finite(obj):
+    """
+    Recursively swaps NaN/Infinity floats for None so they serialize as null.
+    The json module writes them as bare NaN/Infinity, which isn't valid JSON and
+    makes JSON.parse fail in the browser. np.float64 subclasses float, so it's
+    caught here too — it never reaches default() below.
+    """
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: _replace_non_finite(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_replace_non_finite(v) for v in obj]
+    return obj
 
 
 class NumpyJSONProvider(DefaultJSONProvider):
@@ -17,16 +34,22 @@ class NumpyJSONProvider(DefaultJSONProvider):
     (int64, float64) which the stdlib json module can't serialize by default.
     This provider converts them to native Python types before encoding so we
     never hit a 'Object of type int64 is not JSON serializable' error.
+    NaN/Infinity values are emitted as null so the output is always valid JSON.
     """
+
+    def dumps(self, obj, **kwargs):
+        return super().dumps(_replace_non_finite(obj), **kwargs)
 
     @staticmethod
     def default(obj):
-        if isinstance(obj, (np.integer,)):
+        if isinstance(obj, np.integer):
             return int(obj)
-        if isinstance(obj, (np.floating,)):
-            return float(obj)
+        if isinstance(obj, np.floating):
+            return _replace_non_finite(float(obj))
+        if isinstance(obj, np.bool_):
+            return bool(obj)
         if isinstance(obj, np.ndarray):
-            return obj.tolist()
+            return _replace_non_finite(obj.tolist())
         return DefaultJSONProvider.default(obj)
 
 
@@ -47,9 +70,10 @@ def load_data():
     here = os.path.dirname(os.path.abspath(__file__))
     merged_path = os.path.join(here, 'democracy_press_freedom_data.csv')
 
-    if os.path.exists(merged_path):
-        df = pd.read_csv(merged_path)
-    else:
+    df = pd.read_csv(merged_path) if os.path.exists(merged_path) else None
+
+    # rebuild if the cached file predates the ISO column (older name-based merge)
+    if df is None or 'ISO' not in df.columns:
         # build from raw sources if the merged file isn't present
         from data import load_and_merge
         df = load_and_merge()
@@ -69,6 +93,9 @@ df = load_data()
 # year range derived from the data — used across multiple endpoints
 YEAR_MIN = int(df['Year'].min())
 YEAR_MAX = int(df['Year'].max())
+
+# score columns the /api/map endpoint is allowed to colour the map by
+MAP_METRICS = ('DemocracyScore', 'PressFreedomScore')
 
 
 @app.route('/api/meta')
@@ -107,6 +134,9 @@ def map_data():
     """
     year   = int(request.args.get('year', YEAR_MAX))
     metric = request.args.get('metric', 'DemocracyScore')
+    # reject unknown metrics up front — otherwise row[metric] raises a KeyError (500)
+    if metric not in MAP_METRICS:
+        return jsonify({'error': f"Invalid metric. Use one of: {', '.join(MAP_METRICS)}"}), 400
 
     year_df = df[df['Year'] == year]
     # previous year used to calculate year-on-year deltas
@@ -121,6 +151,8 @@ def map_data():
             change = round(row[metric] - prev_row.iloc[0][metric], 2)
         rows.append({
             'country':           row['Country'],
+            # ISO 3166-1 alpha-3 code — the map joins on this, not the name
+            'iso':               row['ISO'],
             'democracyScore':    round(row['DemocracyScore'], 2),
             'pressFreedomScore': round(row['PressFreedomScore'], 2),
             'value':             round(row[metric], 2),
