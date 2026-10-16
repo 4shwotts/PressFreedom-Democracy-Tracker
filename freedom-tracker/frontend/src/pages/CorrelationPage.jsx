@@ -1,6 +1,6 @@
 import { useMemo, useEffect, useState } from 'react'
 import {
-  Scatter, XAxis, YAxis, CartesianGrid, Tooltip,
+  Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ScatterChart, Customized
 } from 'recharts'
 import { api } from '../api'
@@ -57,6 +57,22 @@ function jitter(str, axis) {
 const JITTER_X = 0.08
 const JITTER_Y = 0.8
 
+// phone-width breakpoint — matches the 600px block in responsive.css
+const NARROW_QUERY = '(max-width: 600px)'
+
+// tracks whether the viewport is phone-width so the scatter can switch to
+// settings that stay readable on a small screen (and update on rotate/resize)
+function useIsNarrow() {
+  const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW_QUERY).matches)
+  useEffect(() => {
+    const mq = window.matchMedia(NARROW_QUERY)
+    const onChange = e => setNarrow(e.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  return narrow
+}
+
 function buildInsights(corr) {
   if (!corr) return []
 
@@ -88,7 +104,7 @@ function buildInsights(corr) {
     {
       tone: 'neutral',
       title: 'Outliers',
-      body: `Countries far from the trendline score unusually high or low on one metric relative to the other — these are the most analytically interesting cases. <strong>Hover any dot</strong> to identify the country.`
+      body: `Countries far from the trendline score unusually high or low on one metric relative to the other — these are the most analytically interesting cases. <strong>Hover or tap any dot</strong> to identify the country.`
     },
     {
       tone: 'info',
@@ -99,20 +115,27 @@ function buildInsights(corr) {
 }
 
 export default function CorrelationPage({ meta }) {
+  const isNarrow = useIsNarrow()
   // yearMode is either 'all' or a specific year string like '2019'
-  const [yearMode, setYearMode] = useState('all')
+  // phones open on the latest single year — 1,800+ overlapping "All Years" dots
+  // become an unreadable blob on a small screen
+  const [yearMode, setYearMode] = useState(() =>
+    window.matchMedia(NARROW_QUERY).matches && meta?.yearMax ? String(meta.yearMax) : 'all'
+  )
   const [corr, setCorr]         = useState(null)
   const [loading, setLoading]   = useState(true)
+  // the dot last tapped on a touch screen — Recharts only opens its scatter
+  // tooltip on mouse hover, so phones show the tapped point in a readout instead
+  const [tapped, setTapped]     = useState(null)
 
   // re-fetch whenever the year filter changes
   useEffect(() => {
     setLoading(true)
+    setTapped(null)
     api.getCorrelation(yearMode)
       .then(d => { setCorr(d); setLoading(false) })
       .catch(() => setLoading(false))
   }, [yearMode])
-
-  if (!meta) return null
 
   const isAllYears = yearMode === 'all'
 
@@ -127,6 +150,13 @@ export default function CorrelationPage({ meta }) {
       y: +Math.max(0, Math.min(100, p.pressFreedomScore + jitter(p.country, 'y') * JITTER_Y)).toFixed(3)
     }))
   }, [corr])
+
+  // early return sits after every hook so the hook order is the same on each render
+  if (!meta) return null
+
+  // dot area in px² (Recharts sizes scatter symbols via ZAxis range, not an r prop)
+  // smaller on phones and in All Years mode, where far more points share the plot
+  const dotArea = isNarrow ? (isAllYears ? 10 : 36) : 64
 
   // build year options array — 'all' first then each year in the dataset
   const yearOptions = ['all']
@@ -161,7 +191,7 @@ export default function CorrelationPage({ meta }) {
             <div className="panel-info-box">
               <strong>About this chart:</strong> scatter plot showing how democracy scores relate
               to press freedom scores. The dashed red line is a fitted OLS trendline.
-              Hover any dot to identify the country and see its scores.{' '}
+              {isNarrow ? ' Tap' : ' Hover'} any dot to identify the country and see its scores.{' '}
               {/* warn the user that All Years stacks the same countries multiple times */}
               {isAllYears && (
                 <span style={{ color: 'var(--color-neutral)', fontWeight: 600 }}>
@@ -172,14 +202,18 @@ export default function CorrelationPage({ meta }) {
             </div>
           </div>
 
-          <div className="chart-container">
+          <div className="chart-container chart-container-tall">
             {loading || !corr ? (
               <div className="loading-state">Loading correlation data…</div>
             ) : (
               // ScatterChart (not ComposedChart) — purpose-built for scatter plots
               // its hover/tooltip hit detection works correctly with Scatter series
               <ResponsiveContainer width="100%" height="100%">
-                <ScatterChart margin={{ top: 8, right: 16, bottom: 48, left: 16 }}>
+                <ScatterChart
+                  margin={isNarrow
+                    ? { top: 20, right: 8, bottom: 32, left: 0 }
+                    : { top: 8, right: 16, bottom: 48, left: 16 }}
+                >
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
 
                   <XAxis
@@ -187,36 +221,51 @@ export default function CorrelationPage({ meta }) {
                     dataKey="x"
                     domain={[0, 10]}
                     stroke="var(--color-text-tertiary)"
-                    fontSize={11.5}
+                    fontSize={isNarrow ? 10.5 : 11.5}
                     tickLine={false}
-                    tickCount={7}
+                    tickCount={isNarrow ? 6 : 7}
                     label={{
                       value: 'Democracy Score (0–10)',
                       position: 'insideBottom',
-                      offset: -16,
-                      fontSize: 11.5,
+                      offset: isNarrow ? -10 : -16,
+                      fontSize: isNarrow ? 10.5 : 11.5,
                       fill: 'var(--color-text-tertiary)'
                     }}
                   />
 
+                  {/* on phones the rotated label doesn't fit beside the axis, so it moves
+                      to a horizontal title above the plot instead */}
                   <YAxis
                     type="number"
                     dataKey="y"
                     domain={[0, 100]}
                     stroke="var(--color-text-tertiary)"
-                    fontSize={11.5}
+                    fontSize={isNarrow ? 10.5 : 11.5}
                     tickLine={false}
                     tickCount={6}
-                    label={{
-                      // kept short so the rotated label fits the shorter chart on phones
-                      value: 'Press Freedom (0–100)',
-                      angle: -90,
-                      position: 'insideLeft',
-                      offset: 12,
-                      fontSize: 11.5,
-                      fill: 'var(--color-text-tertiary)'
-                    }}
+                    width={isNarrow ? 34 : 60}
+                    label={isNarrow
+                      ? {
+                          value: 'Press Freedom (0–100)',
+                          position: 'top',
+                          offset: 8,
+                          dx: 44,
+                          fontSize: 10.5,
+                          fill: 'var(--color-text-tertiary)'
+                        }
+                      : {
+                          // short form — the full "Press Freedom Score (0–100)" is clipped at this chart height
+                          value: 'Press Freedom (0–100)',
+                          angle: -90,
+                          position: 'insideLeft',
+                          offset: 12,
+                          fontSize: 11.5,
+                          fill: 'var(--color-text-tertiary)'
+                        }}
                   />
+
+                  {/* ZAxis only controls dot size here — a fixed range gives every dot the same area */}
+                  <ZAxis range={[dotArea, dotArea]} />
 
                   {/* tooltip reads payload[0].payload directly
                       ScatterChart only ever puts the hovered scatter point in payload[0]
@@ -275,10 +324,10 @@ export default function CorrelationPage({ meta }) {
                     name="Countries"
                     data={scatterPoints}
                     fill="#2D7DD2"
-                    // smaller and more transparent in All Years mode to reduce visual noise
+                    // more transparent in All Years mode so dense clusters read as darker areas
                     fillOpacity={isAllYears ? 0.4 : 0.7}
-                    r={isAllYears ? 3 : 5}
                     isAnimationActive={false}
+                    onClick={pt => setTapped(pt.payload ?? pt)}
                   />
 
                   {/* Customized lets us inject arbitrary SVG into the chart without
@@ -298,8 +347,19 @@ export default function CorrelationPage({ meta }) {
             )}
           </div>
 
+          {/* tap readout sits below the chart rather than over it, so it never hides dots */}
+          {isNarrow && tapped && (
+            <div className="chart-tap-readout">
+              <strong>{tapped.country}</strong>
+              <span>
+                Democracy <b>{tapped.democracyScore}</b> · Press Freedom <b>{tapped.pressFreedomScore}</b>
+                {isAllYears && <> · <b>{tapped.year}</b></>}
+              </span>
+            </div>
+          )}
+
           <p className="chart-hint" style={{ marginTop: 'var(--space-2)' }}>
-            Hover any dot to see country details · Dashed red line = OLS trendline
+            {isNarrow ? 'Tap' : 'Hover'} any dot to see country details · Dashed red line = OLS trendline
           </p>
         </div>
 

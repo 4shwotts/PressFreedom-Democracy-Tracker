@@ -68,11 +68,12 @@ function RankTable({ title, rows, tone }) {
         <table className="rank-table" style={{ flex: 1, height: '100%' }}>
           <thead>
             <tr>
+              {/* data-short is swapped in on phones (see responsive.css) so headers fit narrow columns */}
               <th>#</th>
               <th>Country</th>
-              <th>Democracy</th>
+              <th data-short="Dem.">Democracy</th>
               <th>Press</th>
-              <th>Combined</th>
+              <th data-short="Comb.">Combined</th>
             </tr>
           </thead>
           <tbody>

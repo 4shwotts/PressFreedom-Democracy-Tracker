@@ -55,9 +55,21 @@
     min-height: 240px;
   }
 
+  .rank-table-wrap,
+  .dist-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .rank-table-wrap {
     flex: none;
     overflow: visible;
+  }
+
+  /* an odd card out (5 cards in a 2-column grid) spans the full row with its
+     content centred, instead of leaving an empty gap beside it */
+  .stat-row > .stat-card:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+    justify-content: center;
   }
 }
 
@@ -229,14 +241,83 @@
     height: 32px;
   }
 
-  /* --- Data summary tables --- */
-  table.rank-table th,
-  table.rank-table td {
-    padding: var(--space-2) var(--space-2);
+  /* the correlation scatter needs more height than width allows elsewhere —
+     a squarer plot keeps the dots from piling into a single band */
+  .chart-container.chart-container-tall {
+    height: 360px;
   }
 
+  /* --- Data summary tables ---
+     fixed layout so the table always fits its card: the card clips overflow,
+     so with auto layout the Press and Combined columns were cut off on phones */
+  table.rank-table {
+    table-layout: fixed;
+    font-size: 11.5px;
+  }
+
+  table.rank-table th,
+  table.rank-table td {
+    padding: var(--space-2) var(--space-1);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  table.rank-table th {
+    letter-spacing: 0;
+  }
+
+  /* swap long headers for their abbreviation from the data-short attribute */
+  table.rank-table th[data-short] {
+    font-size: 0;
+  }
+
+  table.rank-table th[data-short]::after {
+    content: attr(data-short);
+    font-size: 10px;
+  }
+
+  /* --- Correlation: readout for the dot last tapped --- */
+  .chart-tap-readout {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-raised);
+    font-size: 12.5px;
+    color: var(--color-text-secondary);
+  }
+
+  .chart-tap-readout strong {
+    color: var(--color-text-primary);
+    font-size: 13.5px;
+  }
+
+  .chart-tap-readout b {
+    font-family: var(--font-mono);
+    color: var(--color-text-primary);
+    font-weight: 600;
+  }
+
+  /* # column is narrow, the three score columns share the rest with the country name */
   table.rank-table th:first-child,
   table.rank-table td:first-child {
+    width: 30px;
     padding-left: var(--space-3);
+  }
+
+  table.rank-table th:nth-child(n + 3),
+  table.rank-table td:nth-child(n + 3) {
+    width: 21%;
+    text-align: right;
+    padding-right: var(--space-2);
+  }
+
+  table.rank-table th:last-child,
+  table.rank-table td:last-child {
+    padding-right: var(--space-3);
   }
 }
