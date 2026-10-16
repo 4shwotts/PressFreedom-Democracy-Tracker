@@ -516,5 +516,5 @@ table.rank-table tr:hover {
 }
 
 .page-body-map {
-  grid-template-columns: 300px 1fr;
+  grid-template-columns: 300px minmax(0, 1fr);
 }

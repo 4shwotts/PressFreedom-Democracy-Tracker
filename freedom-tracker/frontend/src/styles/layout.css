@@ -41,7 +41,8 @@ html, body, #root {
   flex-shrink: 0;
 }
 
-.topbar-globe svg {
+.topbar-globe svg,
+.topbar-globe img {
   width: 44px;
   height: 44px;
 }
@@ -151,7 +152,9 @@ html, body, #root {
 
 .page-body {
   display: grid;
-  grid-template-columns: 340px 1fr;
+  /* minmax(0, 1fr) lets the content column shrink below its min-content width —
+     a plain 1fr is pushed wider by nowrap stat labels and overflows the viewport */
+  grid-template-columns: 340px minmax(0, 1fr);
   gap: var(--space-4);
   align-items: stretch;
   width: 100%;
@@ -191,14 +194,16 @@ html, body, #root {
 /* --- Stat card footer row --- */
 .stat-row {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  /* minmax(0, 1fr) so long nowrap labels truncate with an ellipsis instead of
+     widening their column past the panel edge */
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: var(--space-3);
   flex-shrink: 0;
 }
 
 @media (max-width: 980px) {
   .stat-row {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

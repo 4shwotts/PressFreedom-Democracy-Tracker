@@ -52,7 +52,8 @@ const ICONS = {
 export default function StatCard({ icon = 'globe', tone = 'accent', value, label }) {
   const Icon = ICONS[icon] || GlobeIcon
   return (
-    <div className="stat-card">
+    // title shows the full text on hover when a long value or label is truncated
+    <div className="stat-card" title={`${value} — ${label}`}>
       <div className={`stat-card-icon ${tone}`}>
         <Icon />
       </div>

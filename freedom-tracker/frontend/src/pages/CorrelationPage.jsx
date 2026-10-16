@@ -208,7 +208,8 @@ export default function CorrelationPage({ meta }) {
                     tickLine={false}
                     tickCount={6}
                     label={{
-                      value: 'Press Freedom Score (0–100)',
+                      // kept short so the rotated label fits the shorter chart on phones
+                      value: 'Press Freedom (0–100)',
                       angle: -90,
                       position: 'insideLeft',
                       offset: 12,

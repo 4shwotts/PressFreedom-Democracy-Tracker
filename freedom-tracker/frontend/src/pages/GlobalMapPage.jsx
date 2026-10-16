@@ -249,6 +249,8 @@ export default function GlobalMapPage({ meta }) {
                           strokeWidth={0.4}
                           // grey countries get a tooltip too, explaining why there's no colour
                           onMouseEnter={() => setHovered({ ...match, name, hasData: !!match, gap })}
+                          // touch screens have no hover — a tap shows the same tooltip
+                          onClick={() => setHovered({ ...match, name, hasData: !!match, gap })}
                           onMouseLeave={() => setHovered(null)}
                           style={{
                             default: { outline: 'none', transition: 'opacity 120ms' },

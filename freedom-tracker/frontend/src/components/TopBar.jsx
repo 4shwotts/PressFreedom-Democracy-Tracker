@@ -43,7 +43,7 @@ export default function TopBar({ onExport }) {
     <header className="topbar">
       <div className="topbar-brand">
         <div className="topbar-globe">
-        <img src={GlobeLogo} alt="Global Freedom Tracker logo" style={{ width: 44, height: 44 }} />
+        <img src={GlobeLogo} alt="Global Freedom Tracker logo" />
         </div>
         <div className="topbar-titles">
           <h1>Global Freedom Tracker</h1>

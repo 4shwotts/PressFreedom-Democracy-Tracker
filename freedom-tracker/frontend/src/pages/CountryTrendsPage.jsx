@@ -221,7 +221,8 @@ export default function CountryTrendsPage({ meta }) {
                   which axis each line uses, which isn't obvious from the chart alone */}
               <div style={{
                 display: 'flex',
-                gap: 'var(--space-5)',
+                flexWrap: 'wrap', // stacks the two legend items on narrow screens
+                gap: 'var(--space-2) var(--space-5)',
                 marginTop: 'var(--space-2)',
                 fontSize: 11.5,
                 flexShrink: 0
