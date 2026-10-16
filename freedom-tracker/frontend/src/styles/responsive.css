@@ -95,15 +95,16 @@
     min-width: 0;
   }
 
+  /* scales with the viewport so the full title fits down to 320px-wide phones */
   .topbar-titles h1 {
-    font-size: 17px;
+    font-size: clamp(14px, 4.3vw, 17px);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   .topbar-titles p {
-    font-size: 12px;
+    font-size: clamp(11px, 3.2vw, 12px);
   }
 
   .topbar-actions {
@@ -112,28 +113,35 @@
   }
 
   .icon-btn {
-    width: 36px;
-    height: 36px;
+    width: 34px;
+    height: 34px;
   }
 
-  /* --- Tab nav: one row that scrolls sideways rather than wrapping labels --- */
+  /* --- Tab nav: short labels spread evenly so all four tabs fit on screen ---
+     (a sideways-scrolling row hid the last tab with no hint that it scrolled) */
   .tabnav {
-    gap: var(--space-5);
-    padding: 0 var(--space-4);
-    overflow-x: auto;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
+    gap: var(--space-2);
+    padding: 0 var(--space-3);
+    justify-content: space-between;
   }
 
-  .tabnav::-webkit-scrollbar {
-    display: none;
-  }
-
+  /* grow from each label's own width so the longest label ("Correlation")
+     gets the most room on the narrowest phones */
   .tabnav-item {
+    flex: 1 1 auto;
+    min-width: 0;
     padding: var(--space-4) 0;
     font-size: 14px;
     white-space: nowrap;
-    flex-shrink: 0;
+    text-align: center;
+  }
+
+  .tabnav-label-full {
+    display: none;
+  }
+
+  .tabnav-label-short {
+    display: inline;
   }
 
   /* --- Page + panels --- */

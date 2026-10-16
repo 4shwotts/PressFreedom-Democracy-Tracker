@@ -118,6 +118,11 @@ html, body, #root {
   transition: color var(--transition-base);
 }
 
+/* short labels only appear on phones (responsive.css swaps them in) */
+.tabnav-label-short {
+  display: none;
+}
+
 .tabnav-item:hover {
   color: var(--color-text-primary);
 }
