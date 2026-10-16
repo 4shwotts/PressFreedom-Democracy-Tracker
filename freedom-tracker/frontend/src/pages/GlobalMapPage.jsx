@@ -5,6 +5,7 @@ import { api } from '../api'
 import { ISO_NUMERIC_TO_ALPHA3 } from '../isoCodes'
 import InsightPanel from '../components/InsightPanel'
 import StatCard from '../components/StatCard'
+import { ZoomInIcon, ZoomOutIcon } from '../components/ZoomIcons'
 
 // topojson file from the world-atlas CDN — gives us country shapes at 110m resolution
 // (lower resolution = smaller file, faster load, fine for a world map at this scale)
@@ -68,25 +69,6 @@ function buildInsights(mapData, metric) {
 const ZOOM_MIN  = 1
 const ZOOM_MAX  = 6
 const ZOOM_STEP = 0.6
-
-// inline SVG icons for the zoom controls — kept here since they're only used on this page
-function ZoomInIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-      <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M21 21l-4.3-4.3M11 8v6M8 11h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function ZoomOutIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-      <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M21 21l-4.3-4.3M8 11h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  )
-}
 
 export default function GlobalMapPage({ meta }) {
   // year and metric drive the API call — changing either triggers a re-fetch

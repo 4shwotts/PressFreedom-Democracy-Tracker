@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState } from 'react'
+import { useMemo, useEffect, useRef, useState } from 'react'
 import {
   Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ScatterChart, Customized
@@ -6,34 +6,57 @@ import {
 import { api } from '../api'
 import InsightPanel from '../components/InsightPanel'
 import StatCard from '../components/StatCard'
+import { ZoomInIcon, ZoomOutIcon, ZoomResetIcon } from '../components/ZoomIcons'
+import { useChartZoom } from '../useChartZoom'
+
+// full axis extent — democracy runs 0–10, press freedom 0–100. This is the default
+// view and the zoomed-out limit (module constant so the zoom hook gets a stable object)
+const FULL_VIEW = { x0: 0, x1: 10, y0: 0, y1: 100 }
+
+// zoomed-in tick values can be fractional — round them and drop trailing zeros
+const fmtTick = v => String(+v.toFixed(2))
+
+// round tick values inside the visible range (e.g. 4, 4.5, 5 …) — left to itself,
+// Recharts splits a zoomed range evenly and lands on awkward values like 2.78
+function niceTicks(lo, hi, target) {
+  const raw = (hi - lo) / target
+  const mag = 10 ** Math.floor(Math.log10(raw))
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw)
+  const ticks = []
+  for (let v = Math.ceil(lo / step - 1e-9) * step; v <= hi + 1e-9; v += step) ticks.push(+v.toFixed(6))
+  return ticks
+}
 
 // renders the OLS trendline as a plain SVG <line> element using the chart's own axis scale functions
 // keeping it outside Recharts' series system (via Customized) means it never appears in the tooltip
 // payload, so it can't accidentally block or steal hover events from the scatter dots
-function TrendlineSVG({ xAxisMap, yAxisMap, trendline }) {
-  if (!trendline) return null
+function TrendlineSVG({ xAxis, yAxis, trendline }) {
+  if (!trendline || !xAxis?.scale || !yAxis?.scale) return null
 
-  // xAxisMap and yAxisMap are objects keyed by axis ID — we grab the first (and only) entry
-  const xAxis = xAxisMap && Object.values(xAxisMap)[0]
-  const yAxis = yAxisMap && Object.values(yAxisMap)[0]
-  if (!xAxis?.scale || !yAxis?.scale) return null
+  // draw across the visible x range and clip to the plot area, so the line stays
+  // inside the chart at any zoom level
+  const [xa, xb] = xAxis.scale.domain()
+  const [left, right] = xAxis.scale.range()
+  const [bottom, top] = yAxis.scale.range()
+  const lineY = x => yAxis.scale(trendline.slope * x + trendline.intercept)
 
-  // clamp y values so the line never draws outside the chart area
-  const clamp = v => Math.max(0, Math.min(100, v))
-
-  // convert data coordinates → pixel coordinates using the axis scale functions
-  // x runs 0–10 (democracy), y runs 0–100 (press freedom)
   return (
-    <line
-      x1={xAxis.scale(0)}
-      y1={yAxis.scale(clamp(trendline.intercept))}
-      x2={xAxis.scale(10)}
-      y2={yAxis.scale(clamp(trendline.slope * 10 + trendline.intercept))}
-      stroke="#E11D48"
-      strokeWidth={2.2}
-      strokeDasharray="6 3"
-      pointerEvents="none" // ensures mouse events pass through to the scatter dots below
-    />
+    <g pointerEvents="none"> {/* lets mouse events pass through to the scatter dots below */}
+      <defs>
+        <clipPath id="corr-trendline-clip">
+          <rect x={Math.min(left, right)} y={Math.min(top, bottom)}
+                width={Math.abs(right - left)} height={Math.abs(bottom - top)} />
+        </clipPath>
+      </defs>
+      <line
+        x1={xAxis.scale(xa)} y1={lineY(xa)}
+        x2={xAxis.scale(xb)} y2={lineY(xb)}
+        clipPath="url(#corr-trendline-clip)"
+        stroke="#E11D48"
+        strokeWidth={2.2}
+        strokeDasharray="6 3"
+      />
+    </g>
   )
 }
 
@@ -127,14 +150,29 @@ export default function CorrelationPage({ meta }) {
   // the dot last tapped on a touch screen — Recharts only opens its scatter
   // tooltip on mouse hover, so phones show the tapped point in a readout instead
   const [tapped, setTapped]     = useState(null)
+  // zoom/pan state — resets to the full view whenever the year changes
+  const zoom = useChartZoom(FULL_VIEW, yearMode)
+
+  // if the page opened before meta loaded, the phone default (latest year) couldn't be
+  // applied yet — apply it once meta arrives, unless a year has already been picked
+  const yearPicked = useRef(false)
+  useEffect(() => {
+    if (!yearPicked.current && meta?.yearMax && window.matchMedia(NARROW_QUERY).matches) {
+      setYearMode(String(meta.yearMax))
+    }
+  }, [meta])
 
   // re-fetch whenever the year filter changes
+  // `stale` drops responses for a year that's no longer selected — otherwise a slow
+  // earlier request (e.g. All Years) can land last and overwrite the current one
   useEffect(() => {
+    let stale = false
     setLoading(true)
     setTapped(null)
     api.getCorrelation(yearMode)
-      .then(d => { setCorr(d); setLoading(false) })
-      .catch(() => setLoading(false))
+      .then(d => { if (!stale) { setCorr(d); setLoading(false) } })
+      .catch(() => { if (!stale) setLoading(false) })
+    return () => { stale = true }
   }, [yearMode])
 
   const isAllYears = yearMode === 'all'
@@ -180,7 +218,7 @@ export default function CorrelationPage({ meta }) {
                 <select
                   className="select-control"
                   value={yearMode}
-                  onChange={e => setYearMode(e.target.value)}
+                  onChange={e => { yearPicked.current = true; setYearMode(e.target.value) }}
                 >
                   {yearOptions.map(y => (
                     <option key={y} value={y}>{y === 'all' ? 'All Years' : y}</option>
@@ -202,7 +240,33 @@ export default function CorrelationPage({ meta }) {
             </div>
           </div>
 
-          <div className="chart-container chart-container-tall">
+          {/* zoom controls sit above the chart rather than over it, so they never hide dots */}
+          <div className="chart-zoom-bar">
+            <span className="chart-zoom-level">
+              {zoom.isZoomed ? `${zoom.zoomLevel.toFixed(1)}× zoom` : ''}
+            </span>
+            <button className="map-zoom-btn" onClick={zoom.zoomOut} disabled={!zoom.isZoomed} aria-label="Zoom out">
+              <ZoomOutIcon />
+            </button>
+            <button className="map-zoom-btn" onClick={zoom.zoomIn} disabled={!zoom.canZoomIn} aria-label="Zoom in">
+              <ZoomInIcon />
+            </button>
+            <button className="map-zoom-btn" onClick={zoom.reset} disabled={!zoom.isZoomed} aria-label="Reset zoom">
+              <ZoomResetIcon />
+            </button>
+          </div>
+
+          {/* the chart keeps a fixed size — zooming narrows the axis ranges instead.
+              touch-action: at the full view one-finger swipes still scroll the page
+              (pinches come to us); once zoomed, swipes pan the chart instead */}
+          <div
+            ref={zoom.containerRef}
+            className="chart-container chart-container-tall"
+            style={{
+              touchAction: zoom.isZoomed ? 'none' : 'pan-y',
+              cursor: zoom.isZoomed ? 'grab' : undefined
+            }}
+          >
             {loading || !corr ? (
               <div className="loading-state">Loading correlation data…</div>
             ) : (
@@ -212,18 +276,22 @@ export default function CorrelationPage({ meta }) {
                 <ScatterChart
                   margin={isNarrow
                     ? { top: 20, right: 8, bottom: 32, left: 0 }
-                    : { top: 8, right: 16, bottom: 48, left: 16 }}
+                    : { top: 22, right: 16, bottom: 40, left: 0 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
 
+                  {/* domains follow the zoom view; allowDataOverflow keeps them exact and
+                      clips dots outside the visible range to the plot area */}
                   <XAxis
                     type="number"
                     dataKey="x"
-                    domain={[0, 10]}
+                    domain={[zoom.view.x0, zoom.view.x1]}
+                    allowDataOverflow
+                    tickFormatter={fmtTick}
                     stroke="var(--color-text-tertiary)"
                     fontSize={isNarrow ? 10.5 : 11.5}
                     tickLine={false}
-                    tickCount={isNarrow ? 6 : 7}
+                    ticks={niceTicks(zoom.view.x0, zoom.view.x1, isNarrow ? 5 : 6)}
                     label={{
                       value: 'Democracy Score (0–10)',
                       position: 'insideBottom',
@@ -233,35 +301,27 @@ export default function CorrelationPage({ meta }) {
                     }}
                   />
 
-                  {/* on phones the rotated label doesn't fit beside the axis, so it moves
-                      to a horizontal title above the plot instead */}
+                  {/* horizontal title above the plot — a rotated label beside the axis gets
+                      clipped once the chart is short (phones, or with the zoom bar above it) */}
                   <YAxis
                     type="number"
                     dataKey="y"
-                    domain={[0, 100]}
+                    domain={[zoom.view.y0, zoom.view.y1]}
+                    allowDataOverflow
+                    tickFormatter={fmtTick}
                     stroke="var(--color-text-tertiary)"
                     fontSize={isNarrow ? 10.5 : 11.5}
                     tickLine={false}
-                    tickCount={6}
+                    ticks={niceTicks(zoom.view.y0, zoom.view.y1, 5)}
                     width={isNarrow ? 34 : 60}
-                    label={isNarrow
-                      ? {
-                          value: 'Press Freedom (0–100)',
-                          position: 'top',
-                          offset: 8,
-                          dx: 44,
-                          fontSize: 10.5,
-                          fill: 'var(--color-text-tertiary)'
-                        }
-                      : {
-                          // short form — the full "Press Freedom Score (0–100)" is clipped at this chart height
-                          value: 'Press Freedom (0–100)',
-                          angle: -90,
-                          position: 'insideLeft',
-                          offset: 12,
-                          fontSize: 11.5,
-                          fill: 'var(--color-text-tertiary)'
-                        }}
+                    label={{
+                      value: 'Press Freedom (0–100)',
+                      position: 'top',
+                      offset: 8,
+                      dx: isNarrow ? 44 : 58, // nudges the title right so it starts near the axis line
+                      fontSize: isNarrow ? 10.5 : 11.5,
+                      fill: 'var(--color-text-tertiary)'
+                    }}
                   />
 
                   {/* ZAxis only controls dot size here — a fixed range gives every dot the same area */}
@@ -327,20 +387,24 @@ export default function CorrelationPage({ meta }) {
                     // more transparent in All Years mode so dense clusters read as darker areas
                     fillOpacity={isAllYears ? 0.4 : 0.7}
                     isAnimationActive={false}
-                    onClick={pt => setTapped(pt.payload ?? pt)}
+                    // ignore the click that ends a pan — only a genuine tap selects a dot
+                    onClick={pt => { if (!zoom.consumeDrag()) setTapped(pt.payload ?? pt) }}
                   />
 
                   {/* Customized lets us inject arbitrary SVG into the chart without
                       creating a Recharts series — the trendline lives here so it's
-                      invisible to the tooltip and event system */}
+                      invisible to the tooltip and event system. It also hands the live
+                      axis scales to the zoom hook so gestures can map pixels to data */}
                   <Customized
-                    component={(props) => (
-                      <TrendlineSVG
-                        xAxisMap={props.xAxisMap}
-                        yAxisMap={props.yAxisMap}
-                        trendline={corr.trendline}
-                      />
-                    )}
+                    component={(props) => {
+                      // xAxisMap and yAxisMap are keyed by axis ID — grab the first (and only) entry
+                      const xAxis = props.xAxisMap && Object.values(props.xAxisMap)[0]
+                      const yAxis = props.yAxisMap && Object.values(props.yAxisMap)[0]
+                      if (xAxis?.scale && yAxis?.scale) {
+                        zoom.scalesRef.current = { x: xAxis.scale, y: yAxis.scale }
+                      }
+                      return <TrendlineSVG xAxis={xAxis} yAxis={yAxis} trendline={corr.trendline} />
+                    }}
                   />
                 </ScatterChart>
               </ResponsiveContainer>
@@ -359,7 +423,10 @@ export default function CorrelationPage({ meta }) {
           )}
 
           <p className="chart-hint" style={{ marginTop: 'var(--space-2)' }}>
-            {isNarrow ? 'Tap' : 'Hover'} any dot to see country details · Dashed red line = OLS trendline
+            {isNarrow
+              ? 'Tap a dot for details · Pinch or use the buttons to zoom, drag to pan'
+              : 'Hover a dot for details · Scroll or use the buttons to zoom, drag to pan'}
+            {' · '}Dashed red line = OLS trendline
           </p>
         </div>
 

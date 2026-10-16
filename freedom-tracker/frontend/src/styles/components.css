@@ -526,6 +526,23 @@ table.rank-table tr:hover {
   cursor: not-allowed;
 }
 
+/* --- Correlation chart zoom controls (row above the chart) --- */
+.chart-zoom-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-bottom: var(--space-2);
+  flex-shrink: 0;
+}
+
+.chart-zoom-level {
+  margin-right: auto;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--color-text-tertiary);
+}
+
 .page-body-map {
   grid-template-columns: 300px minmax(0, 1fr);
 }
