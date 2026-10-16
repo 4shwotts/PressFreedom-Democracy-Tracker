@@ -26,6 +26,10 @@
 }
 
 .insight-rail {
+  /* geometry shared by the rail line and the dots so the dots sit exactly on it */
+  --rail-line-x: 4px;      /* left edge of the line, from the rail's left edge */
+  --rail-line-w: 1.5px;
+  --dot-size: 13px;
   position: relative;
   padding-left: var(--space-4);
   display: flex;
@@ -36,10 +40,10 @@
 .insight-rail::before {
   content: '';
   position: absolute;
-  left: 4px;
+  left: var(--rail-line-x);
   top: 6px;
   bottom: 6px;
-  width: 1.5px;
+  width: var(--rail-line-w);
   background: var(--color-border);
 }
 
@@ -50,10 +54,12 @@
 
 .insight-dot {
   position: absolute;
-  left: -20px;
-  top: 6px;
-  width: 13px;
-  height: 13px;
+  /* centre on the line: line centre, minus the rail padding the item sits inside, minus half the dot */
+  left: calc(var(--rail-line-x) + var(--rail-line-w) / 2 - var(--space-4) - var(--dot-size) / 2);
+  /* centre on the title's first line (line-height is set on .insight-item-title) */
+  top: calc((var(--title-line-height) - var(--dot-size)) / 2);
+  width: var(--dot-size);
+  height: var(--dot-size);
   border-radius: 50%;
   border: 2px solid var(--color-surface);
   box-shadow: 0 0 0 1.5px currentColor;
@@ -64,9 +70,14 @@
 .insight-dot.neutral { color: var(--color-neutral); background: var(--color-neutral); }
 .insight-dot.info { color: var(--color-accent); background: var(--color-accent); }
 
+.insight-item {
+  --title-line-height: 22px;
+}
+
 .insight-item-title {
   font-family: var(--font-body);
   font-size: 17px;
+  line-height: var(--title-line-height);
   font-weight: 600;
   color: var(--color-text-primary);
   margin: 0 0 8px;
