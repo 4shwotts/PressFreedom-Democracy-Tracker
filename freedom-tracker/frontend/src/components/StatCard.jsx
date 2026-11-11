@@ -54,7 +54,8 @@ export default function StatCard({ icon = 'globe', tone = 'accent', value, label
   return (
     // title shows the full text on hover when a long value or label is truncated
     <div className="stat-card" title={`${value} — ${label}`}>
-      <div className={`stat-card-icon ${tone}`}>
+      {/* decorative — the value and label carry the meaning */}
+      <div className={`stat-card-icon ${tone}`} aria-hidden="true">
         <Icon />
       </div>
       <div className="stat-card-text">

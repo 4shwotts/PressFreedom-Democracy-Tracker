@@ -1,0 +1,200 @@
+# Continuous integration: lint, test and build the backend and frontend, run the
+# browser tests in Chromium and WebKit, and keep the reports for 14 days.
+# After a fully passing run on main, the coverage badges on the `badges` branch
+# are updated.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# a newer push to the same branch cancels the run still in progress
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FORCE_COLOR: '1'
+
+jobs:
+  backend:
+    name: Backend — lint and pytest
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: freedom-tracker/backend
+    outputs:
+      coverage: ${{ steps.coverage.outputs.percent }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: freedom-tracker/backend/requirements*.txt
+
+      - name: Install
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        run: ruff check --output-format=github . ../../.github/scripts
+
+      - name: Tests with coverage (pytest)
+        run: >-
+          python -m pytest
+          --cov --cov-report=term-missing --cov-report=xml --cov-report=html
+          --junitxml=pytest-junit.xml
+
+      - name: Coverage total
+        id: coverage
+        run: echo "percent=$(python -m coverage report --format=total)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-reports
+          retention-days: 14
+          path: |
+            freedom-tracker/backend/htmlcov/
+            freedom-tracker/backend/coverage.xml
+            freedom-tracker/backend/pytest-junit.xml
+
+  frontend:
+    name: Frontend — lint, tests and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: freedom-tracker/frontend
+    outputs:
+      coverage: ${{ steps.coverage.outputs.percent }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: freedom-tracker/frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: freedom-tracker/frontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint (ESLint)
+        run: npm run lint
+
+      - name: Component tests with coverage (Vitest)
+        run: npm run test:coverage -- --reporter=default --reporter=junit --outputFile.junit=vitest-junit.xml
+
+      - name: Coverage total
+        id: coverage
+        run: echo "percent=$(node -p "require('./coverage/coverage-summary.json').total.statements.pct")" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        run: npm run build
+
+      - name: Image size checks
+        run: npm run test:images
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: frontend-reports
+          retention-days: 14
+          path: |
+            freedom-tracker/frontend/coverage/
+            freedom-tracker/frontend/vitest-junit.xml
+
+  e2e:
+    name: Browser tests — Chromium and WebKit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: freedom-tracker/frontend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+          cache: pip
+          cache-dependency-path: freedom-tracker/backend/requirements*.txt
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: freedom-tracker/frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: freedom-tracker/frontend/package-lock.json
+
+      - name: Install backend
+        run: python -m pip install -r ../backend/requirements.txt
+
+      - name: Install frontend
+        run: npm ci
+
+      - name: Install browsers
+        run: npx playwright install --with-deps chromium webkit
+
+      # Playwright starts the Flask API and a production build itself
+      - name: Browser tests (Playwright)
+        run: npm run test:e2e
+        env:
+          PYTHON: python
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          retention-days: 14
+          path: |
+            freedom-tracker/frontend/playwright-report/
+            freedom-tracker/frontend/test-results/
+
+  badges:
+    name: Update coverage badges
+    # only after everything above passed, on a push to main
+    needs: [backend, frontend, e2e]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version-file: .python-version
+
+      - name: Draw badges
+        env:
+          BACKEND: ${{ needs.backend.outputs.coverage }}
+          FRONTEND: ${{ needs.frontend.outputs.coverage }}
+        run: |
+          mkdir -p badges-out
+          python .github/scripts/coverage_badge.py "backend coverage" "$BACKEND" badges-out/backend-coverage.svg
+          python .github/scripts/coverage_badge.py "frontend coverage" "$FRONTEND" badges-out/frontend-coverage.svg
+
+      # the badges branch holds only the two SVGs; it's replaced on each update
+      # so it never builds up history
+      - name: Publish to the badges branch
+        working-directory: badges-out
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          git init -q -b badges
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add backend-coverage.svg frontend-coverage.svg
+          git commit -q -m "Update coverage badges"
+          git push -q --force "https://x-access-token:${TOKEN}@github.com/${REPO}.git" badges

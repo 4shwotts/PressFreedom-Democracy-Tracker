@@ -1,0 +1,25 @@
+# Tool configuration for the backend (not a package — there's nothing to install).
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-markers"
+markers = [
+    "data_quality: checks run against the real dataset files",
+]
+
+[tool.coverage.run]
+source = ["."]
+omit = ["tests/*"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+exclude_also = ['if __name__ == .__main__.:']
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM"]

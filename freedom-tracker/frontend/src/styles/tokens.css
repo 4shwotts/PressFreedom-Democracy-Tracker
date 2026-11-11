@@ -9,11 +9,19 @@
   --color-surface: #FFFFFF;
   --color-surface-raised: #FFFFFF;
   --color-border: #E2E8F0;
+  /* borders on form controls need 3:1 contrast with the background (WCAG 1.4.11) */
+  --color-border-strong: #8794A6;
   --color-text-primary: #14181F;
   --color-text-secondary: #5B6573;
-  --color-text-tertiary: #94A0B2;
+  /* was #94A0B2 (about 2.6:1 on white) — now at least 4.5:1 for small text */
+  --color-text-tertiary: #677385;
+  /* countries with no data on the map */
+  --color-no-data: #D5DCE5;
 
   --color-accent: #2D7DD2;
+  /* accent used for text and as a button background: 4.5:1 or more on white */
+  --color-accent-text: #1F67B5;
+  --color-accent-strong: #1F67B5;
   --color-accent-dim: #E8F1FC;
   --color-navy: #1E3A5F;
 
@@ -25,7 +33,6 @@
   --color-neutral-dim: #FEF3E2;
 
   /* --- Typography --- */
-  --font-display: 'Newsreader', Georgia, serif;
   --font-body: 'Inter', -apple-system, sans-serif;
   --font-mono: 'IBM Plex Mono', monospace;
 
@@ -57,11 +64,16 @@
   --color-surface: #181B22;
   --color-surface-raised: #1F232C;
   --color-border: #2B3038;
+  --color-border-strong: #6C7687;
   --color-text-primary: #F1F3F7;
-  --color-text-secondary: #9AA3B2;
-  --color-text-tertiary: #5F6878;
+  --color-text-secondary: #A3ACBA;
+  /* was #5F6878 (about 3:1 on the dark surface) — now at least 4.5:1 */
+  --color-text-tertiary: #8D96A6;
+  --color-no-data: #3A404B;
 
   --color-accent: #5B9FE8;
+  --color-accent-text: #7DB4F0;
+  --color-accent-strong: #2D6CB8;
   --color-accent-dim: #1A2C42;
   --color-navy: #C7D8EE;
 

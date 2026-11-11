@@ -1,294 +1,204 @@
-import { useEffect, useState } from 'react'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { useId, useMemo, useState } from 'react'
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine
+} from 'recharts'
 import { api } from '../api'
 import InsightPanel from '../components/InsightPanel'
 import StatCard from '../components/StatCard'
+import StatusMessage from '../components/StatusMessage'
+import ChartDataTable from '../components/ChartDataTable'
+import MethodologyNote from '../components/MethodologyNote'
+import { useApi } from '../lib/useApi'
+import { filterCountries, fmtChange, pressPeriodsText, rankText, trendChartData } from '../lib/chartData'
+import { trendInsights } from '../lib/insights'
 
-// generates insight rail entries based on the trend data returned for a country
-// covers overall direction, sharpest single-year drop, average performance, and global ranking
-function buildInsights(trend) {
-  if (!trend) return []
-  const insights = []
+const DEM_COLOUR = '#E11D48'
+const PRESS_COLOUR = '#2D7DD2'
 
-  // work out which direction each metric moved over the full period
-  const demoTone    = trend.tenYearChangeDemocracy < 0 ? 'decline' : trend.tenYearChangeDemocracy > 0 ? 'improve' : 'neutral'
-  const pressTone   = trend.tenYearChangePress     < 0 ? 'decline' : trend.tenYearChangePress     > 0 ? 'improve' : 'neutral'
-  const bothDeclining = trend.tenYearChangeDemocracy < 0 && trend.tenYearChangePress < 0
-  const bothImproving = trend.tenYearChangeDemocracy > 0 && trend.tenYearChangePress > 0
+// line styles: colour shows the metric, the dash pattern and marker shape show the
+// country — so the chart can be read without relying on colour alone
+const SOLID = undefined
+const DASHED = '6 4'
 
-  // first card: overall direction — we show a unified message if both metrics moved the same way,
-  // otherwise show a mixed message with the individual changes
-  if (bothDeclining) {
-    insights.push({
-      tone: 'decline',
-      title: 'Declining Trend',
-      body: `Both democracy and press freedom scores have declined over the <strong>${trend.yearsAvailable}-year</strong> period on record.`
-    })
-  } else if (bothImproving) {
-    insights.push({
-      tone: 'improve',
-      title: 'Improving Trend',
-      body: `Both democracy and press freedom scores have improved over the <strong>${trend.yearsAvailable}-year</strong> period on record.`
-    })
-  } else {
-    insights.push({
-      tone: 'neutral',
-      title: 'Mixed Trend',
-      body: `Democracy has ${demoTone === 'improve' ? 'risen' : 'fallen'} (<strong>${trend.tenYearChangeDemocracy > 0 ? '+' : ''}${trend.tenYearChangeDemocracy}</strong>) while press freedom has ${pressTone === 'improve' ? 'risen' : 'fallen'} (<strong>${trend.tenYearChangePress > 0 ? '+' : ''}${trend.tenYearChangePress}</strong>) over the <strong>${trend.yearsAvailable}-year</strong> period.`
-    })
-  }
+export default function CountryTrendsPage() {
+  const ids = { search: useId(), country: useId(), compare: useId() }
+  const [query, setQuery]       = useState('')
+  // the user's choice, if any — until then the first country alphabetically is
+  // shown. Deriving it (rather than setting a default in an effect) means a quick
+  // choice can never be overwritten by the default
+  const [chosen, setSelected]   = useState('')
+  const [compare, setCompare]   = useState('')
 
-  // sharpestDrop is calculated server-side as the largest single-year negative change in press freedom
-  // the backend returns null if no year-on-year decline exists at all
-  if (trend.sharpestDrop) {
-    insights.push({
-      tone: 'decline',
-      title: 'Sharpest Drop',
-      body: `The biggest single-year decline in press freedom was between <strong>${trend.sharpestDrop.fromYear}</strong> and <strong>${trend.sharpestDrop.toYear}</strong> — a drop of <strong>${trend.sharpestDrop.delta}</strong> points.`
-    })
-  } else {
-    insights.push({
-      tone: 'improve',
-      title: 'No Sharp Drops',
-      body: `Press freedom scores show no significant single-year decline across the full period — a sign of relative stability on this metric.`
-    })
-  }
+  const list = useApi(() => api.getCountryList(), [])
+  const countries = useMemo(() => list.data ?? [], [list.data])
+  const selected = chosen || countries[0] || ''
 
-  // average performance card — tone depends on where the average falls on the scale
-  insights.push({
-    tone: trend.avgDemocracy < 4 ? 'decline' : trend.avgDemocracy > 7.5 ? 'improve' : 'neutral',
-    title: trend.avgDemocracy < 4 ? 'Consistently Low' : trend.avgDemocracy > 7.5 ? 'Consistently High' : 'Mid-Range Performance',
-    body: `Democracy averaged <strong>${trend.avgDemocracy}/10</strong> and press freedom averaged <strong>${trend.avgPress}/100</strong> across the full period — ${
-      trend.avgDemocracy < 4
-        ? 'placing this country among the lower-scoring nations globally.'
-        : trend.avgDemocracy > 7.5
-        ? 'placing this country among the stronger democracies globally.'
-        : 'a mid-range performance on both metrics.'
-    }`
-  })
+  // useApi ignores responses for a country that's no longer selected (BUG-7)
+  const main = useApi(() => api.getCountryTrend(selected), [selected], { enabled: !!selected })
+  const other = useApi(() => api.getCountryTrend(compare), [compare], { enabled: !!compare })
+  const trend = main.data
+  const compareTrend = compare ? other.data : null
 
-  // global ranking comes from the most recent year the country has data for
-  // some countries are missing 2023 data so the backend ranks against whichever year is latest
-  if (trend.ranking) {
-    insights.push({
-      tone: 'info',
-      title: 'Global Standing',
-      body: `Ranks <strong>${trend.ranking.democracyRank}/${trend.ranking.totalCountries}</strong> on democracy and <strong>${trend.ranking.pressRank}/${trend.ranking.totalCountries}</strong> on press freedom globally (${trend.ranking.rankingYear} data).`
-    })
-  }
+  const matches = filterCountries(countries, query)
+  // keep the current choice selectable even when the search hides it
+  const options = matches.includes(selected) || !selected ? matches : [selected, ...matches]
+  const noMatches = query.trim() !== '' && matches.length === 0
 
-  return insights
-}
-
-// formats a numeric change value, prepending + for positive numbers
-function fmtChange(val) {
-  if (val === null || val === undefined) return '—'
-  return `${val > 0 ? '+' : ''}${val}`
-}
-
-export default function CountryTrendsPage({ meta }) {
-  const [countries, setCountries] = useState([])
-  const [selected, setSelected]   = useState('')
-  const [trend, setTrend]         = useState(null)
-  const [loading, setLoading]     = useState(true)
-
-  // fetch the country list once on mount
-  // default to Afghanistan because it's alphabetically first and has interesting data
-  useEffect(() => {
-    api.getCountryList().then(list => {
-      setCountries(list)
-      if (list.length) setSelected(list.includes('Afghanistan') ? 'Afghanistan' : list[0])
-    })
-  }, [])
-
-  // whenever the selected country changes, fetch its full trend data
-  useEffect(() => {
-    if (!selected) return
-    setLoading(true)
-    api.getCountryTrend(selected).then(data => {
-      setTrend(data)
-      setLoading(false)
-    }).catch(() => setLoading(false))
-  }, [selected])
-
-  if (!meta) return null
+  const chartData = trendChartData(trend, compareTrend)
+  const showCompare = !!compareTrend && compareTrend.country !== trend?.country
+  const last = trend?.series[trend.series.length - 1]
 
   return (
     <div className="page-body">
-      <InsightPanel insights={buildInsights(trend)} />
+      <InsightPanel insights={trendInsights(trend)} />
 
       <div>
-        <div className="main-panel">
+        <section className="main-panel" aria-labelledby="trends-title">
           <div className="panel-header">
-            <div>
-              <h2 className="panel-title">Country Trends</h2>
-              <p className="panel-subtitle">Track how a country's scores have changed over the full period of available data.</p>
-              <div style={{ marginTop: 'var(--space-3)' }}>
-                <label className="control-label">Select Country to Analyse</label>
-                <select
-                  className="select-control"
-                  value={selected}
-                  onChange={e => setSelected(e.target.value)}
-                >
-                  {countries.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
+            <div className="control-stack">
+              <h2 className="panel-title" id="trends-title">Country trends</h2>
+              <p className="panel-subtitle">How a country’s scores have changed over the years with data.</p>
+
+              <div className="control-row">
+                <div className="control-group">
+                  <label className="control-label" htmlFor={ids.search}>Search countries</label>
+                  <input
+                    id={ids.search}
+                    type="search"
+                    className="input-control"
+                    value={query}
+                    placeholder="e.g. Norway"
+                    autoComplete="off"
+                    onChange={e => setQuery(e.target.value)}
+                  />
+                </div>
+                <div className="control-group">
+                  <label className="control-label" htmlFor={ids.country}>Country</label>
+                  <select
+                    id={ids.country}
+                    className="select-control"
+                    value={selected}
+                    disabled={!countries.length}
+                    onChange={e => setSelected(e.target.value)}
+                  >
+                    {options.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div className="control-group">
+                  <label className="control-label" htmlFor={ids.compare}>Compare with (optional)</label>
+                  <select id={ids.compare} className="select-control" value={compare} onChange={e => setCompare(e.target.value)}>
+                    <option value="">No comparison</option>
+                    {countries.filter(c => c !== selected).map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
               </div>
+
+              {noMatches && (
+                <p className="status-message status-empty" role="status">
+                  No countries match “{query.trim()}”. Try another spelling, or clear the search.
+                </p>
+              )}
             </div>
             <div className="panel-info-box">
-              <strong>About this chart:</strong> this line chart shows how democracy and press
-              freedom scores have changed over time for the selected country.
-              The two metrics use different scales — check the axis legend below.
+              <strong>About this chart:</strong> democracy (left axis, 0–10) and press freedom (right axis,
+              0–100) over time. Solid lines are the selected country; dashed lines are the comparison.
             </div>
           </div>
 
-          {loading || !trend ? (
-            <div className="loading-state">Loading country data…</div>
-          ) : (
+          <StatusMessage loading={list.loading} error={list.error} onRetry={list.retry} loadingText="Loading countries…" />
+          <StatusMessage loading={!trend && main.loading} error={main.error} onRetry={main.retry} loadingText="Loading country data…" />
+          <StatusMessage error={compare ? other.error : null} onRetry={other.retry} />
+
+          {trend && (
             <>
+              <MethodologyNote />
               <div className="chart-container">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={trend.series}
-                    margin={{ top: 8, right: 16, bottom: 4, left: 0 }}
-                  >
+                  <LineChart data={chartData} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-
-                    <XAxis
-                      dataKey="year"
-                      stroke="var(--color-text-tertiary)"
-                      fontSize={11.5}
-                      tickLine={false}
-                    />
-
-                    {/* left axis covers democracy (0–10) */}
-                    <YAxis
-                      yAxisId="left"
-                      stroke="var(--color-text-tertiary)"
-                      fontSize={11.5}
-                      tickLine={false}
-                      domain={[0, 10]}
-                    />
-
-                    {/* right axis covers press freedom (0–100) — different scale to democracy
-                        which is why we need dual axes and the legend below to explain them */}
-                    <YAxis
-                      yAxisId="right"
-                      orientation="right"
-                      stroke="var(--color-text-tertiary)"
-                      fontSize={11.5}
-                      tickLine={false}
-                      domain={[0, 100]}
-                    />
-
-                    <Tooltip
-                      contentStyle={{
-                        background: 'var(--color-surface-raised)',
-                        border: '1px solid var(--color-border)',
-                        borderRadius: 8,
-                        fontSize: 12.5,
-                        fontFamily: 'var(--font-body)'
-                      }}
-                    />
-
-                    {/* democracy line plots against the left axis */}
-                    <Line
-                      yAxisId="left"
-                      type="monotone"
-                      dataKey="democracyScore"
-                      name="Democracy Score"
-                      stroke="#E11D48"
-                      strokeWidth={2.4}
-                      dot={{ r: 2.5 }}
-                      activeDot={{ r: 5 }}
-                    />
-
-                    {/* press freedom line plots against the right axis */}
-                    <Line
-                      yAxisId="right"
-                      type="monotone"
-                      dataKey="pressFreedomScore"
-                      name="Press Freedom Score"
-                      stroke="#2D7DD2"
-                      strokeWidth={2.4}
-                      dot={{ r: 2.5 }}
-                      activeDot={{ r: 5 }}
-                    />
+                    <XAxis dataKey="year" stroke="var(--color-text-tertiary)" fontSize={11.5} tickLine={false} />
+                    <YAxis yAxisId="left" stroke="var(--color-text-tertiary)" fontSize={11.5} tickLine={false} domain={[0, 10]} />
+                    <YAxis yAxisId="right" orientation="right" stroke="var(--color-text-tertiary)" fontSize={11.5}
+                           tickLine={false} domain={[0, 100]} />
+                    {/* marks where RSF's methodology changed */}
+                    <ReferenceLine yAxisId="right" x={2022} stroke="var(--color-text-tertiary)" strokeDasharray="2 3"
+                                   // label sits to the left of the line so it never overlaps the right axis
+                                   label={{ value: 'RSF method change', position: 'insideTopRight', fontSize: 10.5,
+                                            fill: 'var(--color-text-secondary)' }} />
+                    <Tooltip contentStyle={{
+                      background: 'var(--color-surface-raised)', border: '1px solid var(--color-border)',
+                      borderRadius: 8, fontSize: 12.5, fontFamily: 'var(--font-body)'
+                    }} />
+                    <Line yAxisId="left" type="monotone" dataKey="democracyScore" name={`${trend.country} — democracy`}
+                          stroke={DEM_COLOUR} strokeWidth={2.4} strokeDasharray={SOLID} dot={{ r: 2.5 }} activeDot={{ r: 5 }} />
+                    <Line yAxisId="right" type="monotone" dataKey="pressFreedomScore" name={`${trend.country} — press freedom`}
+                          stroke={PRESS_COLOUR} strokeWidth={2.4} strokeDasharray={SOLID} dot={{ r: 2.5 }} activeDot={{ r: 5 }} />
+                    {showCompare && (
+                      <Line yAxisId="left" type="monotone" dataKey="compareDemocracy" name={`${compareTrend.country} — democracy`}
+                            stroke={DEM_COLOUR} strokeWidth={2} strokeDasharray={DASHED} dot={{ r: 3, strokeWidth: 1.5, fill: 'var(--color-surface)' }}
+                            connectNulls />
+                    )}
+                    {showCompare && (
+                      <Line yAxisId="right" type="monotone" dataKey="comparePress" name={`${compareTrend.country} — press freedom`}
+                            stroke={PRESS_COLOUR} strokeWidth={2} strokeDasharray={DASHED} dot={{ r: 3, strokeWidth: 1.5, fill: 'var(--color-surface)' }}
+                            connectNulls />
+                    )}
                   </LineChart>
                 </ResponsiveContainer>
               </div>
 
-              {/* custom legend replaces the Recharts default — explicitly tells the reader
-                  which axis each line uses, which isn't obvious from the chart alone */}
-              <div style={{
-                display: 'flex',
-                flexWrap: 'wrap', // stacks the two legend items on narrow screens
-                gap: 'var(--space-2) var(--space-5)',
-                marginTop: 'var(--space-2)',
-                fontSize: 11.5,
-                flexShrink: 0
-              }}>
-                <span style={{ color: '#E11D48', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{
-                    display: 'inline-block', width: 24, height: 2,
-                    background: '#E11D48', borderRadius: 2, flexShrink: 0
-                  }} />
-                  Democracy Score. Left axis (0–10)
-                </span>
-                <span style={{ color: '#2D7DD2', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{
-                    display: 'inline-block', width: 24, height: 2,
-                    background: '#2D7DD2', borderRadius: 2, flexShrink: 0
-                  }} />
-                  Press Freedom Score. Right axis (0–100)
-                </span>
-              </div>
+              {/* custom legend: names each line and says which axis it uses */}
+              <ul className="chart-legend">
+                <li><span className="legend-line" style={{ borderColor: DEM_COLOUR }} />{trend.country} — democracy (left axis, 0–10)</li>
+                <li><span className="legend-line" style={{ borderColor: PRESS_COLOUR }} />{trend.country} — press freedom (right axis, 0–100)</li>
+                {showCompare && (
+                  <>
+                    <li><span className="legend-line dashed" style={{ borderColor: DEM_COLOUR }} />{compareTrend.country} — democracy (dashed)</li>
+                    <li><span className="legend-line dashed" style={{ borderColor: PRESS_COLOUR }} />{compareTrend.country} — press freedom (dashed)</li>
+                  </>
+                )}
+              </ul>
 
-              {/* caption row shows the key numbers at a glance below the chart */}
-              <div className="chart-caption">
-                <span>Latest Democracy Score: <strong style={{ fontFamily: 'var(--font-mono)' }}>{trend.latestDemocracy}/10</strong></span>
-                <span>Latest Press Freedom Score: <strong style={{ fontFamily: 'var(--font-mono)' }}>{trend.latestPress}/100</strong></span>
-                <span>Data available for <strong>{trend.yearsAvailable}</strong> years ({meta.yearMin}–{meta.yearMax})</span>
-              </div>
+              {/* a plain-text summary of what the chart shows */}
+              <p className="chart-summary">
+                {trend.country}: democracy score {trend.series[0].democracyScore} in {trend.series[0].year} and{' '}
+                {last.democracyScore} in {last.year}; press freedom change by period {pressPeriodsText(trend.pressChangePeriods)}.
+                {showCompare && ` ${compareTrend.country}: democracy score ${compareTrend.latestDemocracy} and press freedom score ${compareTrend.latestPress} in ${compareTrend.series[compareTrend.series.length - 1].year}.`}
+              </p>
+
+              <ChartDataTable
+                caption={showCompare ? `Scores by year: ${trend.country} and ${compareTrend.country}` : `Scores by year: ${trend.country}`}
+                columns={[
+                  { key: 'year', label: 'Year' },
+                  { key: 'democracyScore', label: `${trend.country} democracy`, numeric: true },
+                  { key: 'pressFreedomScore', label: `${trend.country} press freedom`, numeric: true },
+                  ...(showCompare ? [
+                    { key: 'compareDemocracy', label: `${compareTrend.country} democracy`, numeric: true },
+                    { key: 'comparePress', label: `${compareTrend.country} press freedom`, numeric: true }
+                  ] : [])
+                ]}
+                rows={chartData.map(r => ({ ...r, key: r.year }))}
+              />
             </>
           )}
-        </div>
-
-        <div style={{ height: 'var(--space-3)' }} />
+        </section>
 
         {trend && (
           <div className="stat-row">
-            <StatCard
-              icon="file"
-              tone="accent"
-              value={`${trend.latestDemocracy}/10`}
-              // fmtChange adds a + sign for positive values so the direction is clear at a glance
-              label={`Latest Democracy, ${fmtChange(trend.democracyChangeVsPrevYear)} vs prior yr`}
-            />
-            <StatCard
-              icon="file"
-              tone="accent"
-              value={`${trend.latestPress}/100`}
-              label={`Latest Press Freedom, ${fmtChange(trend.pressChangeVsPrevYear)} vs prior yr`}
-            />
-            <StatCard
-              icon={trend.tenYearChangeDemocracy < 0 ? 'down' : 'up'}
-              tone={trend.tenYearChangeDemocracy < 0 ? 'decline' : 'improve'}
-              value={`${fmtChange(trend.tenYearChangeDemocracy)} / ${fmtChange(trend.tenYearChangePress)}`}
-              // yearsAvailable is dynamic — 10 for most countries, 11 for those with full 2013–2023 data
-              label={`Change over ${trend.yearsAvailable} years (Dem / Press)`}
-            />
-            <StatCard
-              icon="file"
-              tone="neutral"
-              value={`${trend.avgDemocracy} / ${trend.avgPress}`}
-              label="Average Over Period"
-            />
-            <StatCard
-              icon="globe"
-              tone="accent"
-              value={trend.ranking ? `${trend.ranking.democracyRank}/${trend.ranking.totalCountries}` : '—'}
-              label={`Global Ranking (${trend.ranking?.rankingYear ?? meta.yearMax})`}
-            />
+            <StatCard icon="file" tone="accent" value={`${trend.latestDemocracy}/10`}
+                      label={`Democracy score, ${last.year} (${fmtChange(trend.democracyChangeVsPrevYear)} vs previous year)`} />
+            <StatCard icon="file" tone="accent" value={`${trend.latestPress}/100`}
+                      label={`Press freedom score, ${last.year} (${fmtChange(trend.pressChangeVsPrevYear)} vs previous year)`} />
+            <StatCard icon={trend.tenYearChangeDemocracy < 0 ? 'down' : 'up'}
+                      tone={trend.tenYearChangeDemocracy < 0 ? 'decline' : 'improve'}
+                      value={fmtChange(trend.tenYearChangeDemocracy)}
+                      label={`Democracy change, ${trend.series[0].year}–${last.year}`} />
+            <StatCard icon="file" tone="neutral"
+                      value={trend.pressChangePeriods.map(p => fmtChange(p.change)).join(' · ') || '—'}
+                      label={`Press freedom change, ${trend.pressChangePeriods.map(p => `${p.fromYear}–${p.toYear}`).join(' · ') || 'not enough data'}`} />
+            <StatCard icon="globe" tone="accent"
+                      value={rankText(trend.ranking.democracyRank, trend.ranking.totalCountries)}
+                      label={`Democracy rank in this dashboard, ${trend.ranking.rankingYear}`} />
           </div>
         )}
       </div>

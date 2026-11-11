@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 // Zoom + pan for a fixed-size Recharts chart. Zooming works by narrowing the
 // axis domains (the chart itself never changes size), and the full data extent
@@ -49,18 +49,27 @@ function panView(view, full, dx, dy) {
  */
 export function useChartZoom(full, resetKey) {
   const [view, setView] = useState(full)
+
+  // back to the full view when the reset key (e.g. the year) changes — adjusted
+  // during render, React's recommended alternative to resetting state in an effect
+  const [lastKey, setLastKey] = useState(resetKey)
+  if (lastKey !== resetKey) {
+    setLastKey(resetKey)
+    setView(full)
+  }
+
+  // the latest view, for the gesture handlers (which are attached once)
   const viewRef = useRef(view)
-  viewRef.current = view
+  useLayoutEffect(() => { viewRef.current = view })
 
   // the chart's wrapping element (receives the gestures) — a callback ref held in
   // state, so listeners attach whenever the element mounts, even if that's after
-  // the first render — and the live axis scales, which the chart reports on each
-  // render so pixels can be mapped to data values
+  // the first render — and the live axis scales, which the chart reports after
+  // each render (reportScales) so pixels can be mapped to data values
   const [el, containerRef] = useState(null)
   const scalesRef = useRef(null)
+  const reportScales = useCallback(scales => { scalesRef.current = scales }, [])
   const draggedRef = useRef(false)
-
-  useEffect(() => { setView(full) }, [resetKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const centre = v => [(v.x0 + v.x1) / 2, (v.y0 + v.y1) / 2]
 
@@ -187,7 +196,7 @@ export function useChartZoom(full, resetKey) {
       el.removeEventListener('wheel', onWheel)
       el.removeEventListener('gesturestart', onGesture)
     }
-  }, [el, full]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [el, full])
 
   const level = zoomLevel(view, full)
 
@@ -201,6 +210,6 @@ export function useChartZoom(full, resetKey) {
     reset,
     consumeDrag,
     containerRef,
-    scalesRef
+    reportScales
   }
 }

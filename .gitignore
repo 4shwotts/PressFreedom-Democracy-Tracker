@@ -3,10 +3,21 @@ __pycache__/
 *.pyc
 *.pyo
 .env
+.env.local
+.env.*.local
 venv/
+.venv/
 
-# Generated merged CSV — rebuilt automatically on first run
-backend/democracy_press_freedom_data.csv
+# Test and lint output
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# The merged CSV (freedom-tracker/backend/democracy_press_freedom_data.csv) is
+# tracked on purpose: production serves it, and a test checks it matches a
+# fresh rebuild from the raw files (python data.py)
 
 # Node — matches node_modules at any folder depth
 node_modules/
@@ -19,3 +30,11 @@ dist/
 .DS_Store
 Thumbs.db
 *.log
+
+# Frontend test output
+coverage/
+playwright-report/
+test-results/
+
+# CI test reports
+*-junit.xml

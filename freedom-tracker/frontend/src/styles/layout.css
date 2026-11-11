@@ -91,7 +91,7 @@ html, body, #root {
 
 .icon-btn:hover {
   background: var(--color-accent-dim);
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   border-color: var(--color-accent);
 }
 
@@ -128,7 +128,7 @@ html, body, #root {
 }
 
 .tabnav-item.active {
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   font-weight: 600;
 }
 
